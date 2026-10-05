@@ -5,6 +5,10 @@
   "name": "MCRL Bridge",
   "description": "Exposes the game to a Python reinforcement-learning agent over a local TCP socket.",
   "environment": "client",
+  "entrypoints": {
+    "client": ["dev.mcrl.McrlClient"]
+  },
+  "mixins": ["mcrl.mixins.json"],
   "depends": {
     "fabricloader": ">=0.16.0",
     "minecraft": "~1.21.1",

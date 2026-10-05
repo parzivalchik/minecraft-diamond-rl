@@ -9,6 +9,7 @@ __pycache__/
 mod/.gradle/
 mod/build/
 mod/run/
+mod/logs/
 mod/.idea/
 *.iml
 
