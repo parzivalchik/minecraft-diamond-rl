@@ -15,7 +15,11 @@ brew install uv
 cd python && uv python install 3.12 && uv sync
 ```
 
-Then create the training world once:
+Then create the training world once. The quickest way is
+`cd mod && ./gradlew runClient -Pmcrl.autoWorld=true`: at the title screen the mod opens the
+**rl_arena** world, creating it first if needed (Survival, Allow Commands on, default Superflat —
+the arena sits in its own bedrock box at y=100, so Void isn't required). Use the same flag on later
+launches to skip the menus. Or create it by hand:
 
 1. `cd mod && ./gradlew runClient`
 2. Singleplayer → Create New World → name it **rl_arena**, Game Mode **Survival**, Allow Commands **On**.

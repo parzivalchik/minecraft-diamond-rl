@@ -40,6 +40,7 @@ public final class McrlClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(controller::onEndTick);
         WorldRenderEvents.END.register(context -> controller.onWorldRendered(MinecraftClient.getInstance()));
         ClientLifecycleEvents.CLIENT_STARTED.register(RenderSettings::apply);
+        AutoWorld.register();
         LOG.info("MCRL bridge listening on 127.0.0.1:{} (tick rate {} Hz while driving)",
                 bridge.getPort(), ArenaManager.TICK_RATE);
     }
