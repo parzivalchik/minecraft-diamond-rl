@@ -50,8 +50,10 @@ class MetricsCallback(BaseCallback):
         super().__init__()
         self.curriculum = curriculum
         self.curriculum_path = Path(curriculum_path)
+        self.death_counts: dict[str, int] = {}
 
     def _on_step(self) -> bool:
+        deaths_changed = False
         for info in self.locals["infos"]:
             if "success" not in info:
                 continue
@@ -59,10 +61,16 @@ class MetricsCallback(BaseCallback):
             self.logger.record_mean("episode/success_rate", float(info["success"]))
             self.logger.record_mean("episode/death_rate", float(info["death"]))
             if info["death"]:
-                self.logger.record_mean(f"death_cause/{info['death_cause'] or 'unknown'}", 1.0)
+                cause = info["death_cause"] or "unknown"
+                self.death_counts[cause] = self.death_counts.get(cause, 0) + 1
+                deaths_changed = True
             if info["advanced"]:
                 print(f"Curriculum advanced to stage {self.curriculum.stage}")
                 self.curriculum.save(self.curriculum_path)
+        if deaths_changed:
+            total_deaths = sum(self.death_counts.values())
+            for cause, count in self.death_counts.items():
+                self.logger.record(f"death_cause/{cause}", count / total_deaths)
         self.logger.record("curriculum/stage", self.curriculum.stage)
         self.logger.record("curriculum/success_rate", self.curriculum.success_rate())
         return True

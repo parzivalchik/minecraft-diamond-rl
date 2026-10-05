@@ -1,3 +1,4 @@
+import pytest
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -34,3 +35,25 @@ def test_ppo_trains_against_fake_bridge(bridge, tmp_path):
     assert latest_checkpoint(tmp_path) == tmp_path / "ppo_64_steps.zip"
     assert (tmp_path / "curriculum.json").exists()
     assert model.num_timesteps == 64
+
+
+def test_death_cause_metrics_are_fractions_of_all_deaths(bridge, tmp_path):
+    from stable_baselines3.common.logger import configure
+
+    env = MinecraftEnv(client=BridgeClient(port=bridge.port), max_steps=20)
+    model = make_model(DummyVecEnv([lambda: Monitor(env)]), tensorboard_dir=None, device="cpu")
+    model.set_logger(configure(None, []))
+    callback = MetricsCallback(env.curriculum, tmp_path / "curriculum.json")
+    callback.init_callback(model)
+
+    def death(cause):
+        return {"success": False, "episode_diamonds": 0, "death": True,
+                "death_cause": cause, "advanced": False}
+
+    for cause in ["lava", "fall", "lava"]:
+        callback.locals = {"infos": [death(cause)]}
+        callback._on_step()
+
+    values = model.logger.name_to_value
+    assert values["death_cause/lava"] == pytest.approx(2 / 3)
+    assert values["death_cause/fall"] == pytest.approx(1 / 3)
