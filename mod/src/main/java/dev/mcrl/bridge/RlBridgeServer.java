@@ -8,10 +8,14 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Localhost TCP server for one agent at a time. Runs on its own thread and never touches game
@@ -20,7 +24,14 @@ import java.util.concurrent.LinkedBlockingQueue;
 public final class RlBridgeServer {
     private static final Logger LOG = LoggerFactory.getLogger("mcrl");
 
-    public record Pending(Request request, CompletableFuture<Reply> reply) {}
+    /**
+     * A request awaiting the game thread. If the agent disconnects while waiting, the bridge cancels
+     * {@code reply}; the game thread must skip pendings whose reply is already done
+     * ({@link #isAbandoned()}) instead of executing them.
+     */
+    public record Pending(Request request, CompletableFuture<Reply> reply) {
+        public boolean isAbandoned() { return reply.isDone(); }
+    }
 
     public record Reply(JsonObject header, byte[] frame) {
         public static Reply error(String message) {
@@ -62,6 +73,9 @@ public final class RlBridgeServer {
                 serve(socket);
             } catch (IOException e) {
                 if (!serverSocket.isClosed()) LOG.info("agent disconnected: {}", e.toString());
+            } catch (RuntimeException e) {
+                // backstop: a bug while serving one connection must not kill the accept thread
+                LOG.error("bridge connection failed unexpectedly", e);
             } finally {
                 connected = false;
             }
@@ -69,7 +83,8 @@ public final class RlBridgeServer {
     }
 
     private void serve(Socket socket) throws IOException {
-        DataInputStream in = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
+        BufferedInputStream buffered = new BufferedInputStream(socket.getInputStream());
+        DataInputStream in = new DataInputStream(buffered);
         DataOutputStream out = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
         while (true) {
             byte[] payload = Protocol.readMessage(in); // EOFException when the agent disconnects
@@ -83,16 +98,56 @@ public final class RlBridgeServer {
             if (request.cmd().equals("close")) return;
             CompletableFuture<Reply> future = new CompletableFuture<>();
             queue.add(new Pending(request, future));
-            Reply reply;
+            Reply reply = awaitReply(socket, buffered, future);
+            if (reply == null) return; // peer died mid-request; future already cancelled
+            Protocol.writeReply(out, reply.header(), reply.frame());
+        }
+    }
+
+    /**
+     * Waits for the game thread's reply in short slices, checking between slices that the agent is
+     * still connected (it never sends while awaiting a reply, so a readable EOF means it died). On
+     * disconnect the pending future is cancelled and null is returned.
+     */
+    private Reply awaitReply(Socket socket, BufferedInputStream in, CompletableFuture<Reply> future)
+            throws IOException {
+        while (true) {
             try {
-                reply = future.get();
+                return future.get(50, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                // still waiting: fall through to the liveness check
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return;
+                future.cancel(false);
+                return null;
             } catch (ExecutionException e) {
-                reply = Reply.error(String.valueOf(e.getCause()));
+                return Reply.error(String.valueOf(e.getCause()));
+            } catch (CancellationException e) {
+                return Reply.error("request cancelled");
             }
-            Protocol.writeReply(out, reply.header(), reply.frame());
+            if (peerClosed(socket, in)) {
+                future.cancel(false);
+                LOG.info("agent disconnected mid-request; abandoning it");
+                return null;
+            }
+        }
+    }
+
+    private static boolean peerClosed(Socket socket, BufferedInputStream in) {
+        try {
+            socket.setSoTimeout(5);
+            try {
+                in.mark(1);
+                if (in.read() == -1) return true;
+                in.reset(); // unexpected byte: keep it for the next readMessage
+                return false;
+            } finally {
+                socket.setSoTimeout(0);
+            }
+        } catch (SocketTimeoutException e) {
+            return false;
+        } catch (IOException e) {
+            return true; // reset or closed
         }
     }
 }

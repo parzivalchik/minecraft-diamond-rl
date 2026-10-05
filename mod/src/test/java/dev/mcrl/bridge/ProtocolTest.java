@@ -33,6 +33,18 @@ class ProtocolTest {
     }
 
     @Test
+    void rejectsWrongJsonTypesWithIllegalArgumentException() {
+        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":null}"));
+        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":{}}"));
+        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":[1,2]}"));
+        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"reset\",\"seed\":null,\"stage\":1}"));
+        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"reset\",\"seed\":{},\"stage\":1}"));
+        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"reset\",\"seed\":[1],\"stage\":1}"));
+        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"step\",\"action\":null}"));
+        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"step\",\"action\":[1]}"));
+    }
+
+    @Test
     void replyRoundTrip() throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         JsonObject header = new JsonObject();

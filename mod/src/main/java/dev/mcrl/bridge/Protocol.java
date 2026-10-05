@@ -51,8 +51,19 @@ public final class Protocol {
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("malformed JSON request");
         }
+        try {
+            return parseFields(o);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            // e.g. {"cmd":null}, {"cmd":[1]}, {"seed":{}}: wrong JSON types must never escape as other exceptions
+            throw new IllegalArgumentException("malformed request field");
+        }
+    }
+
+    private static Request parseFields(JsonObject o) {
         if (!o.has("cmd")) throw new IllegalArgumentException("missing cmd");
-        String cmd = o.get("cmd").getAsString();
+        String cmd = primitive(o, "cmd").getAsString();
         return switch (cmd) {
             case "close" -> new Request(cmd, 0, 0L, 0);
             case "step" -> {
@@ -63,7 +74,14 @@ public final class Protocol {
                 yield new Request(cmd, action, 0L, 0);
             }
             case "reset" -> {
-                long seed = o.has("seed") ? o.get("seed").getAsLong() : 0L;
+                long seed = 0L;
+                if (o.has("seed")) {
+                    try {
+                        seed = primitive(o, "seed").getAsLong();
+                    } catch (RuntimeException e) {
+                        throw new IllegalArgumentException("seed must be an integer");
+                    }
+                }
                 int stage = intField(o, "stage");
                 StageConfig.forStage(stage); // throws IllegalArgumentException for unknown stages
                 yield new Request(cmd, 0, seed, stage);
@@ -72,10 +90,17 @@ public final class Protocol {
         };
     }
 
+    /** Gson coerces single-element arrays to scalars; insist on a real JSON primitive instead. */
+    private static JsonElement primitive(JsonObject o, String name) {
+        JsonElement e = o.get(name);
+        if (e == null || !e.isJsonPrimitive()) throw new IllegalArgumentException(name + " must be a JSON scalar");
+        return e;
+    }
+
     private static int intField(JsonObject o, String name) {
         if (!o.has(name)) throw new IllegalArgumentException("missing " + name);
         try {
-            return o.get(name).getAsInt();
+            return primitive(o, name).getAsInt();
         } catch (RuntimeException e) {
             throw new IllegalArgumentException(name + " must be an integer");
         }

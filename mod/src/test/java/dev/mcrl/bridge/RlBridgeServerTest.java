@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.*;
 import java.net.InetAddress;
@@ -83,12 +84,58 @@ class RlBridgeServerTest {
     }
 
     @Test
-    void servesNewClientAfterPreviousOneDiesMidRequest() throws Exception {
+    @Timeout(30)
+    void wrongTypedFieldsGetErrorRepliesAndServerKeepsServing() throws Exception {
+        String[] bad = {
+                "{\"cmd\":null}", "{\"cmd\":{}}", "{\"cmd\":[1,2]}",
+                "{\"cmd\":\"reset\",\"seed\":{},\"stage\":1}",
+                "{\"cmd\":\"reset\",\"seed\":null,\"stage\":1}",
+        };
+        try (Socket s = connect()) {
+            DataInputStream in = new DataInputStream(s.getInputStream());
+            for (String json : bad) {
+                send(s, json);
+                assertTrue(readHeader(in).has("error"), json);
+                assertEquals(0, Protocol.readMessage(in).length);
+            }
+            send(s, "{\"cmd\":\"step\",\"action\":1}");
+            assertEquals(1, awaitPending().request().action());
+        }
+        // the accept thread must also still be alive for brand-new connections
+        try (Socket s2 = connect()) {
+            send(s2, "{\"cmd\":\"step\",\"action\":3}");
+            assertEquals(3, awaitPending().request().action());
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void abandonsOrphanedRequestAndServesNewClient() throws Exception {
+        Socket first = connect();
+        send(first, "{\"cmd\":\"step\",\"action\":0}");
+        RlBridgeServer.Pending orphan = awaitPending();
+        first.close();  // the orphan is deliberately NOT completed: the bridge must abandon it itself
+
+        try (Socket second = connect()) {
+            DataInputStream in = new DataInputStream(second.getInputStream());
+            send(second, "{\"cmd\":\"step\",\"action\":2}");
+            RlBridgeServer.Pending p = awaitPending();
+            assertEquals(2, p.request().action());
+            assertTrue(orphan.isAbandoned());
+            assertTrue(orphan.reply().isCancelled());
+            p.reply().complete(new RlBridgeServer.Reply(new JsonObject(), new byte[0]));
+            assertNotNull(readHeader(in));
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void lateReplyToDeadClientDoesNotWedgeServer() throws Exception {
         Socket first = connect();
         send(first, "{\"cmd\":\"step\",\"action\":0}");
         RlBridgeServer.Pending orphan = awaitPending();
         first.close();
-        orphan.reply().complete(RlBridgeServer.Reply.error("too late"));  // write to dead socket must not wedge
+        orphan.reply().complete(RlBridgeServer.Reply.error("too late"));  // may race with abandonment; both are fine
 
         try (Socket second = connect()) {
             DataInputStream in = new DataInputStream(second.getInputStream());
@@ -97,6 +144,23 @@ class RlBridgeServerTest {
             assertEquals(2, p.request().action());
             p.reply().complete(new RlBridgeServer.Reply(new JsonObject(), new byte[0]));
             assertNotNull(readHeader(in));
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void slowReplyToLiveClientIsStillDelivered() throws Exception {
+        try (Socket s = connect()) {
+            DataInputStream in = new DataInputStream(s.getInputStream());
+            send(s, "{\"cmd\":\"step\",\"action\":4}");
+            RlBridgeServer.Pending p = awaitPending();
+            Thread.sleep(300); // several liveness-check slices pass with the client still connected
+            assertFalse(p.isAbandoned());
+            JsonObject h = new JsonObject();
+            h.addProperty("ok", true);
+            p.reply().complete(new RlBridgeServer.Reply(h, new byte[]{7}));
+            assertTrue(readHeader(in).get("ok").getAsBoolean());
+            assertArrayEquals(new byte[]{7}, Protocol.readMessage(in));
         }
     }
 }
