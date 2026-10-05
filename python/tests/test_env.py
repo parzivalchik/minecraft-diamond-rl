@@ -127,3 +127,73 @@ def test_reset_error_reply_raises_bridge_error(bridge):
     env = make_env(bridge)
     with pytest.raises(BridgeError, match="rl_arena"):
         env.reset(seed=0)
+
+
+@pytest.fixture
+def sleeps(monkeypatch):
+    """Records retry back-off sleeps instead of sleeping."""
+    recorded: list[float] = []
+    monkeypatch.setattr("mcrl.env._sleep", recorded.append)
+    return recorded
+
+
+def test_step_error_reply_truncates_without_recording(bridge):
+    def respond(req, n):
+        if n == 2:
+            return {"error": "world unloaded or agent disconnected mid-step"}
+        return make_header()
+    bridge.respond = respond
+    curriculum = Curriculum()
+    env = make_env(bridge, curriculum=curriculum)
+    obs0, _ = env.reset(seed=0)
+    obs, reward, terminated, truncated, info = env.step(0)
+    assert truncated and not terminated and reward == 0.0
+    assert info == {"bridge_error": "world unloaded or agent disconnected mid-step"}
+    assert obs is obs0  # last good observation
+    assert list(curriculum.history) == []  # discarded, not counted
+
+
+def test_drop_during_later_reset_is_retried(bridge, sleeps, capsys):
+    env = make_env(bridge)
+    env.reset(seed=0)
+    bridge.drop_after = 1  # the next request gets no reply: the game "crashes" mid-reset
+    obs, _ = env.reset(seed=1)
+    assert obs["image"].shape == (64, 64, 12)
+    assert [r["cmd"] for r in bridge.requests] == ["reset", "reset", "reset"]
+    assert sleeps == [0.5]
+    assert "connection lost" in capsys.readouterr().out
+
+
+def test_bridge_error_on_later_reset_is_retried(bridge, sleeps, capsys):
+    def respond(req, n):
+        if n == 2:
+            return {"error": "no singleplayer world loaded - open the rl_arena world"}
+        return make_header()
+    bridge.respond = respond
+    env = make_env(bridge)
+    env.reset(seed=0)
+    obs, info = env.reset(seed=1)
+    assert obs["image"].shape == (64, 64, 12) and info == {"stage": 1}
+    assert len(bridge.requests) == 3
+    assert sleeps == [0.5]
+    assert "rl_arena" in capsys.readouterr().out
+
+
+def test_reset_retry_backoff_doubles_up_to_10s(bridge, sleeps):
+    def respond(req, n):
+        if 2 <= n <= 8:
+            return {"error": "integrated server did not respond within 10 s"}
+        return make_header()
+    bridge.respond = respond
+    env = make_env(bridge)
+    env.reset(seed=0)
+    env.reset(seed=1)
+    assert sleeps == [0.5, 1.0, 2.0, 4.0, 8.0, 10.0, 10.0]
+
+
+def test_first_reset_error_reply_does_not_retry(bridge, sleeps):
+    bridge.respond = lambda req, n: {"error": "no singleplayer world loaded - open the rl_arena world"}
+    env = make_env(bridge)
+    with pytest.raises(BridgeError, match="rl_arena"):
+        env.reset(seed=0)
+    assert sleeps == [] and len(bridge.requests) == 1

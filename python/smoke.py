@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 
-from mcrl.protocol import BridgeClient
+from mcrl.protocol import BridgeClient, BridgeError
 
 STEPS = 200
 LOOK_DOWN, ATTACK = 9, 10
@@ -30,12 +30,26 @@ def main(argv=None) -> int:
     parser.add_argument("--port", type=int, default=5005)
     args = parser.parse_args(argv)
 
+    failures.clear()
     client = BridgeClient(port=args.port)
-    client.connect(attempts=20)
+    try:
+        client.connect(attempts=20)
+        run_checks(client)
+    except BridgeError as e:
+        check(False, f"the mod answered with an error: {e} (is the rl_arena world open?)")
+    except OSError as e:  # includes ConnectionError
+        check(False, f"bridge connection on port {args.port} failed: {e} (is the game running?)")
+    finally:
+        client.close()
+    print(f"\n{len(failures)} failure(s)" if failures else "\nall checks passed")
+    return 1 if failures else 0
 
+
+def run_checks(client: BridgeClient) -> None:
     reply = client.request({"cmd": "reset", "seed": 1, "stage": 1})
     check(frame_ok(reply), "reset returns a 64x64x3 frame")
-    check(float(reply.frame.mean()) > 5, f"reset frame is not black (mean={reply.frame.mean():.1f})")
+    if frame_ok(reply):
+        check(float(reply.frame.mean()) > 5, f"reset frame is not black (mean={reply.frame.mean():.1f})")
     check(reply.header["diamonds_remaining"] in (2, 3), "stage-1 arena has 2-3 diamonds")
     check(reply.header["health"] == 20 and not reply.header["dead"], "player starts healthy")
 
@@ -71,12 +85,8 @@ def main(argv=None) -> int:
     try:
         client.request({"cmd": "reset", "seed": 1, "stage": 3})
         check(False, "stage 3 is rejected")
-    except Exception as e:  # BridgeError
+    except BridgeError as e:
         check("not implemented" in str(e), "stage 3 is rejected with a clear error")
-
-    client.close()
-    print(f"\n{len(failures)} failure(s)" if failures else "\nall checks passed")
-    return 1 if failures else 0
 
 
 if __name__ == "__main__":

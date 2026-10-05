@@ -1,6 +1,7 @@
 """Gymnasium wrapper around the MCRL bridge (spec §5–§7)."""
 from __future__ import annotations
 
+import time
 from collections import deque
 
 import gymnasium as gym
@@ -8,8 +9,12 @@ import numpy as np
 from gymnasium import spaces
 
 from mcrl.curriculum import Curriculum
-from mcrl.protocol import FRAME_SIZE, BridgeClient, Reply
+from mcrl.protocol import FRAME_SIZE, BridgeClient, BridgeError, Reply
 from mcrl.rewards import RewardConfig, RewardTracker
+
+RETRY_DELAY = 0.5
+RETRY_MAX_DELAY = 10.0
+_sleep = time.sleep  # indirection so tests can skip the back-off waits
 
 ACTION_NAMES = [
     "noop", "forward", "back", "strafe_left", "strafe_right", "jump_forward",
@@ -39,6 +44,7 @@ class MinecraftEnv(gym.Env):
         self._diamonds = 0
         self._last_damage: str | None = None
         self._stage = self.curriculum.stage
+        self._has_reset = False  # until the first successful reset, mod errors fail fast
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
@@ -53,14 +59,20 @@ class MinecraftEnv(gym.Env):
         self._diamonds = 0
         self._last_damage = None
         self._last_obs = self._obs(reply.header)
+        self._has_reset = True
         return self._last_obs, {"stage": self._stage}
 
     def step(self, action):
         try:
             reply = self.client.request({"cmd": "step", "action": int(action)})
         except ConnectionError:
-            # Game crashed or restarted: discard this episode; SB3 will call reset(), which reconnects.
+            # Game crashed or restarted: discard this episode (not recorded to the curriculum).
+            # SB3 then calls reset(), which reconnects and retries until the rl_arena world is back.
             return self._last_obs, 0.0, False, True, {"disconnected": True}
+        except BridgeError as e:
+            # The mod failed this step (world unloaded, frame timeout, ...): discard the episode the
+            # same way; reset() retries until the mod answers normally again.
+            return self._last_obs, 0.0, False, True, {"bridge_error": str(e)}
 
         header = reply.header
         reward, reward_info = self._rewards.compute(header)
@@ -92,11 +104,25 @@ class MinecraftEnv(gym.Env):
         self.client.close()
 
     def _request_with_retry(self, msg: dict) -> Reply:
+        """Retry until the mod answers: through game restarts (connection lost) and error replies
+        (e.g. world not open yet), backing off 0.5 s doubling to 10 s.
+
+        Exception: before this env's first successful reset an error reply raises immediately, so a
+        missing rl_arena world is reported at startup instead of being waited on silently.
+        """
+        delay = RETRY_DELAY
         while True:
             try:
                 return self.client.request(msg)
-            except ConnectionError:
-                self.client.connect()  # retries with backoff until the game is back
+            except BridgeError as e:
+                if not self._has_reset:
+                    raise
+                reason = f"mod error: {e}"
+            except ConnectionError as e:
+                reason = str(e)  # request() reconnects (with its own back-off) on the next try
+            print(f"{msg['cmd']} failed ({reason}); retrying in {delay:g} s", flush=True)
+            _sleep(delay)
+            delay = min(delay * 2, RETRY_MAX_DELAY)
 
     def _obs(self, header: dict) -> dict:
         state = np.array([header["health"] / 20.0, header["food"] / 20.0, float(header["on_fire"])],

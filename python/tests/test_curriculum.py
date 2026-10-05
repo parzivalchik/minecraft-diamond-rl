@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from mcrl.curriculum import Curriculum
@@ -68,3 +70,24 @@ def test_load_corrupt_file_falls_back_to_stage_1(tmp_path):
     with pytest.warns(UserWarning, match="unreadable curriculum"):
         c = Curriculum.load(path)
     assert c.stage == 1
+
+
+def test_save_is_atomic(tmp_path, monkeypatch):
+    path = tmp_path / "curriculum.json"
+    Curriculum(stage=2).save(path)
+
+    def crash(src, dst):
+        raise OSError("disk full")
+    monkeypatch.setattr(os, "replace", crash)
+    with pytest.raises(OSError):
+        Curriculum(stage=1).save(path)
+    assert Curriculum.load(path).stage == 2  # the old file survived the failed save
+    assert [p.name for p in tmp_path.iterdir()] == ["curriculum.json"]  # no temp file left behind
+
+
+def test_save_overwrites(tmp_path):
+    path = tmp_path / "curriculum.json"
+    Curriculum(stage=1).save(path)
+    Curriculum(stage=2).save(path)
+    assert Curriculum.load(path).stage == 2
+    assert [p.name for p in tmp_path.iterdir()] == ["curriculum.json"]

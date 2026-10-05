@@ -1,7 +1,9 @@
 """PPO construction, checkpoint discovery, and training metrics (spec §9)."""
 from __future__ import annotations
 
+import os
 import re
+import warnings
 from pathlib import Path
 
 import torch
@@ -34,13 +36,44 @@ def make_model(vec_env, tensorboard_dir: Path | None, device: str, **overrides) 
                tensorboard_log=str(tensorboard_dir) if tensorboard_dir else None, **params)
 
 
-def latest_checkpoint(directory: Path) -> Path | None:
+def checkpoints_newest_first(directory: Path) -> list[Path]:
+    """All ppo_<steps>_steps.zip checkpoints in directory, highest step count first."""
     directory = Path(directory)
     if not directory.is_dir():
-        return None
+        return []
     found = [(int(m.group(1)), p) for p in directory.iterdir()
              if (m := _CHECKPOINT_RE.fullmatch(p.name))]
-    return max(found)[1] if found else None
+    return [p for _, p in sorted(found, reverse=True)]
+
+
+def latest_checkpoint(directory: Path) -> Path | None:
+    found = checkpoints_newest_first(directory)
+    return found[0] if found else None
+
+
+def load_newest_checkpoint(directory: Path, env, device: str) -> tuple[PPO | None, Path | None]:
+    """Load the newest checkpoint that loads cleanly, warning about and skipping broken ones
+    (e.g. a file truncated by a crash mid-save). Returns (None, None) if none loads."""
+    for path in checkpoints_newest_first(directory):
+        try:
+            return PPO.load(path, env=env, device=device), path
+        except Exception as e:  # noqa: BLE001 - any unreadable checkpoint means "try the older one"
+            warnings.warn(f"cannot load checkpoint {path} ({type(e).__name__}: {e}); "
+                          f"falling back to an older one", UserWarning)
+    return None, None
+
+
+def save_atomic(model: PPO, path: Path) -> None:
+    """Save to a temp name next to path, then os.replace, so path is never a half-written zip."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")  # does not match the checkpoint pattern
+    try:
+        model.save(tmp)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 class MetricsCallback(BaseCallback):

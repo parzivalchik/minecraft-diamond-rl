@@ -32,6 +32,7 @@ class FakeBridge:
         self.respond = respond or (lambda req, n: make_header())
         self.requests: list[dict] = []
         self.drop_after: int | None = None
+        self.send_frames = True  # False: reply with empty frames, like a reply with no frame attached
         self._replies = 0
         self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -64,7 +65,10 @@ class FakeBridge:
             header = self.respond(req, len(self.requests))
             self._replies += 1
             send_msg(conn, json.dumps(header).encode())
-            frame = b"" if "error" in header else bytes([len(self.requests) % 256]) * FRAME_BYTES
+            if "error" in header or not self.send_frames:
+                frame = b""
+            else:
+                frame = bytes([len(self.requests) % 256]) * FRAME_BYTES
             send_msg(conn, frame)
 
     def close(self) -> None:

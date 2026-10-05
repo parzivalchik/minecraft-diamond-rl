@@ -1,7 +1,10 @@
 """Stage progression by rolling success rate (spec §7)."""
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import tempfile
 import warnings
 from collections import deque
 from dataclasses import dataclass, field
@@ -42,9 +45,21 @@ class Curriculum:
         return c
 
     def save(self, path) -> None:
+        """Write atomically (temp file in the same directory, then os.replace), so a crash or
+        Ctrl-C mid-save never leaves a truncated curriculum file behind."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.to_dict()))
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(json.dumps(self.to_dict()))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(tmp)
+            raise
 
     @classmethod
     def load(cls, path) -> "Curriculum":
