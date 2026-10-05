@@ -19,17 +19,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Client-thread state machine (spec §3.2):
  * IDLE --request--> ACTING (inputs applied for N ticks while the server runs N ticks)
  *      --> AWAIT_FRAME (next world render is captured) --> reply --> IDLE.
  * Between steps the server is frozen and block breaking is suspended, so slow Python never desyncs.
+ *
+ * <p>Known limitation: a tick-frozen server still ticks players, so the agent's own physics (falling,
+ * sliding) and fire/lava damage keep advancing between steps. That idle drift is bounded by Python's
+ * reply latency (about 1-2 ticks at 100 Hz) and affects only the player, not blocks or the world.
  */
 public final class StepController {
     private static final Logger LOG = LoggerFactory.getLogger("mcrl");
     static final int TICKS_PER_STEP = 4;
     static final int RESET_SETTLE_TICKS = 10;
+    /** Client ticks to wait in AWAIT_FRAME for a world render (about 1 s at 100 Hz) before failing. */
+    static final int FRAME_TIMEOUT_TICKS = 100;
+    /** Upper bound on waiting for a task submitted to the integrated server thread. */
+    static final long SERVER_TIMEOUT_SECONDS = 10;
 
     private enum State { IDLE, ACTING, AWAIT_FRAME }
 
@@ -45,6 +57,7 @@ public final class StepController {
     private Pending current;
     private Actions.Spec spec = Actions.NOOP;
     private int ticksLeft;
+    private int awaitTicks;
     private boolean ownsKeys;
 
     public StepController(RlBridgeServer bridge, ArenaManager arena) {
@@ -88,7 +101,14 @@ public final class StepController {
             fail("world unloaded or agent disconnected mid-step");
             return;
         }
-        if (state == State.ACTING && --ticksLeft <= 0) state = State.AWAIT_FRAME;
+        if (state == State.ACTING) {
+            if (--ticksLeft <= 0) {
+                state = State.AWAIT_FRAME;
+                awaitTicks = 0;
+            }
+        } else if (state == State.AWAIT_FRAME && ++awaitTicks > FRAME_TIMEOUT_TICKS) {
+            fail("no frame rendered within " + FRAME_TIMEOUT_TICKS + " client ticks");
+        }
     }
 
     public void onWorldRendered(MinecraftClient client) {
@@ -97,12 +117,11 @@ public final class StepController {
             byte[] frame = FrameCapture.capture(client.getFramebuffer());
             IntegratedServer server = client.getServer();
             UUID id = client.player.getUuid();
-            JsonObject header = server.submit(
-                    () -> arena.observe(server, server.getPlayerManager().getPlayer(id))).join();
+            JsonObject header = onServer(server.submit(
+                    () -> arena.observe(server, server.getPlayerManager().getPlayer(id))));
             complete(new Reply(header, frame));
-        } catch (RuntimeException e) {
-            LOG.error("frame capture failed", e);
-            fail("frame capture failed: " + e);
+        } catch (Throwable t) {
+            failAndMaybeRethrow("frame capture", t);
         }
     }
 
@@ -140,8 +159,8 @@ public final class StepController {
         Request request = pending.request();
         try {
             if (request.cmd().equals("reset")) {
-                server.submit(() -> arena.reset(server, server.getPlayerManager().getPlayer(id),
-                        request.seed(), request.stage())).join();
+                onServer(server.submit(() -> arena.reset(server, server.getPlayerManager().getPlayer(id),
+                        request.seed(), request.stage())));
                 spec = Actions.NOOP;
                 ticksLeft = RESET_SETTLE_TICKS;
             } else {
@@ -154,10 +173,40 @@ public final class StepController {
             int ticks = ticksLeft;
             server.execute(() -> server.getTickManager().step(ticks));
             state = State.ACTING;
-        } catch (RuntimeException e) {
-            LOG.error("failed to start {}", request, e);
-            fail(request.cmd() + " failed: " + e);
+        } catch (Throwable t) {
+            failAndMaybeRethrow(request.cmd(), t);
         }
+    }
+
+    /**
+     * Waits for a server-thread task, at most SERVER_TIMEOUT_SECONDS, so a stopped or hung integrated
+     * server fails the request instead of hanging the client thread. Unwraps the task's own failure.
+     */
+    private static <T> T onServer(CompletableFuture<T> task) {
+        try {
+            return task.orTimeout(SERVER_TIMEOUT_SECONDS, TimeUnit.SECONDS).join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof TimeoutException) {
+                throw new IllegalStateException("integrated server did not respond within "
+                        + SERVER_TIMEOUT_SECONDS + " s", cause);
+            }
+            if (cause instanceof RuntimeException r) throw r;
+            if (cause instanceof Error err) throw err;
+            throw e;
+        }
+    }
+
+    /**
+     * Always answers the pending request so the bridge never wedges. VirtualMachineErrors (OOM,
+     * StackOverflow, InternalError) are rethrown afterwards: the JVM is not in a state to keep
+     * training, and Minecraft's crash handling should see them. Everything else, including
+     * LinkageErrors from a bad mapping, is logged and reported to Python as an error reply.
+     */
+    private void failAndMaybeRethrow(String what, Throwable t) {
+        LOG.error("{} failed", what, t);
+        fail(what + " failed: " + t);
+        if (t instanceof VirtualMachineError vme) throw vme;
     }
 
     private void complete(Reply reply) {

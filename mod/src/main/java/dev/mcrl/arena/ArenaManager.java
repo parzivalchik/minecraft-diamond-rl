@@ -28,7 +28,10 @@ import java.util.List;
 public final class ArenaManager {
     /** Corner of the arena shell (local 0,0,0). */
     public static final BlockPos ORIGIN = new BlockPos(0, 100, 0);
-    /** Server/client tick rate; 4 ticks per step = 40 ms of game time per step. */
+    /**
+     * Tick rate while driving: the server via ServerTickManager.setTickRate, the client via the
+     * getTargetMillisPerTick override in MinecraftClientMixin. 4 ticks per step = 40 ms per step.
+     */
     public static final float TICK_RATE = 100f;
     private static final int SET_FLAGS = Block.NOTIFY_LISTENERS | Block.FORCE_STATE;
 
@@ -71,7 +74,7 @@ public final class ArenaManager {
         h.addProperty("diamonds_remaining", diamonds.size());
         h.add("events", tracker.drainEvents());
         h.addProperty("dead", dead);
-        h.addProperty("tick", server.getTicks());
+        h.addProperty("tick", world.getTime()); // game time: advances only on real (stepped) ticks
         return h;
     }
 
