@@ -44,6 +44,10 @@ loom {
         client {
             // Small window = cheap rendering; frames are downsampled to 64x64 anyway.
             programArgs '--width', '320', '--height', '240'
+            // Forward e.g. `./gradlew runClient -Pmcrl.tickRate=200` to the game JVM.
+            ['mcrl.port', 'mcrl.tickRate'].each { key ->
+                if (project.hasProperty(key)) vmArg "-D${key}=${project.property(key)}"
+            }
         }
     }
 }

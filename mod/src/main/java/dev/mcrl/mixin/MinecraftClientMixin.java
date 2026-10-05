@@ -21,7 +21,8 @@ public abstract class MinecraftClientMixin {
 
     /**
      * Vanilla returns max(default 50 ms, server mspt), capping client ticks at 20 Hz even when the
-     * server runs faster. While driving, run client ticks at ArenaManager.TICK_RATE as well.
+     * server runs faster. While driving, run client ticks at ArenaManager.TICK_RATE, the same
+     * (mcrl.tickRate-configurable) value ArenaManager gives the server.
      */
     @Inject(method = "getTargetMillisPerTick", at = @At("HEAD"), cancellable = true)
     private void mcrl$fastClientTicks(float defaultMillisPerTick, CallbackInfoReturnable<Float> cir) {

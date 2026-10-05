@@ -28,16 +28,33 @@ import java.util.List;
 public final class ArenaManager {
     /** Corner of the arena shell (local 0,0,0). */
     public static final BlockPos ORIGIN = new BlockPos(0, 100, 0);
+    static final float DEFAULT_TICK_RATE = 100f;
     /**
      * Tick rate while driving: the server via ServerTickManager.setTickRate, the client via the
-     * getTargetMillisPerTick override in MinecraftClientMixin. 4 ticks per step = 40 ms per step.
+     * getTargetMillisPerTick override in MinecraftClientMixin, so both always use the same value.
+     * Set with -Dmcrl.tickRate (default 100; 4 ticks per step = 40 ms per step at 100 Hz).
      */
-    public static final float TICK_RATE = 100f;
+    public static final float TICK_RATE = parseTickRate(System.getProperty("mcrl.tickRate"));
     private static final int SET_FLAGS = Block.NOTIFY_LISTENERS | Block.FORCE_STATE;
 
     private final EpisodeTracker tracker;
     private final List<BlockPos> diamonds = new ArrayList<>();
     private MinecraftServer preparedFor;
+
+    /** Parses mcrl.tickRate: null means the default; anything outside 1..10000 (vanilla /tick rate) is rejected. */
+    static float parseTickRate(String value) {
+        if (value == null) return DEFAULT_TICK_RATE;
+        float rate;
+        try {
+            rate = Float.parseFloat(value.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("mcrl.tickRate must be a number, got '" + value + "'", e);
+        }
+        if (!(rate >= 1f && rate <= 10000f)) {
+            throw new IllegalArgumentException("mcrl.tickRate must be between 1 and 10000, got " + value);
+        }
+        return rate;
+    }
 
     public ArenaManager(EpisodeTracker tracker) {
         this.tracker = tracker;

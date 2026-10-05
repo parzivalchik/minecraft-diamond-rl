@@ -30,15 +30,21 @@ import java.util.concurrent.TimeoutException;
  *      --> AWAIT_FRAME (next world render is captured) --> reply --> IDLE.
  * Between steps the server is frozen and block breaking is suspended, so slow Python never desyncs.
  *
+ * <p>Requests are picked up at the start of a client tick, before inputs are applied, so the tick
+ * that begins a step is also its first ACTING tick: a step costs exactly N client ticks (plus Python's
+ * round trip), not N + 1.
+ *
  * <p>Known limitation: a tick-frozen server still ticks players, so the agent's own physics (falling,
- * sliding) and fire/lava damage keep advancing between steps. That idle drift is bounded by Python's
- * reply latency (about 1-2 ticks at 100 Hz) and affects only the player, not blocks or the world.
+ * sliding) and fire/lava damage keep advancing between steps. That idle drift is bounded by how long
+ * Python is not stepping: usually a tick or so of reply latency, but several seconds during PPO's
+ * optimisation phase after each rollout (or any other pause in stepping). It affects only the player,
+ * not blocks or the world.
  */
 public final class StepController {
     private static final Logger LOG = LoggerFactory.getLogger("mcrl");
     static final int TICKS_PER_STEP = 4;
     static final int RESET_SETTLE_TICKS = 10;
-    /** Client ticks to wait in AWAIT_FRAME for a world render (about 1 s at 100 Hz) before failing. */
+    /** Client ticks to wait in AWAIT_FRAME for a world render (about 1 s at the default 100 Hz) before failing. */
     static final int FRAME_TIMEOUT_TICKS = 100;
     /** Upper bound on waiting for a task submitted to the integrated server thread. */
     static final long SERVER_TIMEOUT_SECONDS = 10;
@@ -70,7 +76,13 @@ public final class StepController {
         return bridge.isConnected() && client.player != null && client.world != null && client.getServer() != null;
     }
 
+    /**
+     * Starts the next queued request (so this tick is its first ACTING tick), then applies the
+     * current step's movement keys for this tick.
+     */
     public void onStartTick(MinecraftClient client) {
+        // Pause menu open: wait; queued requests are handled after unpausing.
+        if (state == State.IDLE && !client.isPaused()) pollAndBegin(client);
         if (!isDriving(client)) {
             if (ownsKeys) {
                 setMovementKeys(client.options, Actions.NOOP);
@@ -82,21 +94,10 @@ public final class StepController {
         setMovementKeys(client.options, state == State.ACTING ? spec : Actions.NOOP);
     }
 
+    /** Counts the tick that just ran: ACTING ticks toward the step, AWAIT_FRAME ticks toward the watchdog. */
     public void onEndTick(MinecraftClient client) {
-        if (client.isPaused()) return; // pause menu open: wait; queued requests are handled after unpausing
-        if (state == State.IDLE) {
-            Pending pending;
-            while ((pending = bridge.poll()) != null) {
-                // The agent disconnected while this request was queued: never execute it.
-                if (pending.isAbandoned()) {
-                    LOG.info("skipping abandoned {} request", pending.request().cmd());
-                    continue;
-                }
-                begin(client, pending);
-                break;
-            }
-            return;
-        }
+        if (client.isPaused()) return; // pause menu open: the tick didn't run the world, don't count it
+        if (state == State.IDLE) return;
         if (!isDriving(client)) {
             fail("world unloaded or agent disconnected mid-step");
             return;
@@ -148,6 +149,24 @@ public final class StepController {
         return true;
     }
 
+    private void pollAndBegin(MinecraftClient client) {
+        Pending pending;
+        while ((pending = bridge.poll()) != null) {
+            // The agent disconnected while this request was queued: never execute it.
+            if (pending.isAbandoned()) {
+                LOG.info("skipping abandoned {} request", pending.request().cmd());
+                continue;
+            }
+            begin(client, pending);
+            return;
+        }
+    }
+
+    /**
+     * Runs in START_CLIENT_TICK. On success the state is ACTING with ticksLeft = N, and this same
+     * tick is the first of the N ticks that apply the inputs and that onEndTick counts; the server
+     * is stepped exactly N ticks to match.
+     */
     private void begin(MinecraftClient client, Pending pending) {
         if (!isDriving(client)) {
             pending.reply().complete(Reply.error("no singleplayer world loaded - open the rl_arena world"));

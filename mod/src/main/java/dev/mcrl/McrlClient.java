@@ -40,7 +40,8 @@ public final class McrlClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(controller::onEndTick);
         WorldRenderEvents.END.register(context -> controller.onWorldRendered(MinecraftClient.getInstance()));
         ClientLifecycleEvents.CLIENT_STARTED.register(RenderSettings::apply);
-        LOG.info("MCRL bridge listening on 127.0.0.1:{}", bridge.getPort());
+        LOG.info("MCRL bridge listening on 127.0.0.1:{} (tick rate {} Hz while driving)",
+                bridge.getPort(), ArenaManager.TICK_RATE);
     }
 
     private static void registerTrackerEvents(EpisodeTracker tracker) {
@@ -55,7 +56,9 @@ public final class McrlClient implements ClientModInitializer {
         ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
             if (!(entity instanceof ServerPlayerEntity player)) return true;
             // Cancel real death (no death screen); report it and let Python end the episode and reset.
-            tracker.onDamage(sourceId(source), amount);
+            // No onDamage here: with health set back to 1 the entity is no longer dead when
+            // LivingEntity.damage reaches its TAIL, so AFTER_DAMAGE still fires and records the
+            // lethal hit (and its cause) exactly once.
             tracker.onDeath();
             player.setHealth(1.0f);
             return false;
