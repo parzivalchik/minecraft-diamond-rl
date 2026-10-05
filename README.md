@@ -6,8 +6,12 @@ Design: `docs/design.md`.
 
 ## One-time setup
 
+The mod needs **JDK 21** (`java -version` should say 21; e.g. `brew install --cask temurin@21`).
+`./gradlew` downloads Gradle itself and builds and runs the game with that JDK, so no separate
+Gradle install is needed.
+
 ```bash
-brew install uv gradle
+brew install uv
 cd python && uv python install 3.12 && uv sync
 ```
 
@@ -23,15 +27,22 @@ Then create the training world once:
 cd mod && ./gradlew runClient          # terminal 1; open the rl_arena world
 ```
 ```bash
-cd python && uv run python train.py --run diamond1      # terminal 2
+cd python && caffeinate -dis uv run python train.py --run diamond1      # terminal 2
 ```
 ```bash
 cd python && uv run tensorboard --logdir runs           # optional: http://localhost:6006
 ```
 
-- Stop with Ctrl-C; continue later with `uv run python train.py --run diamond1 --resume`.
+- `caffeinate -dis` keeps a laptop (and its display) awake for multi-hour runs; macOS sleep
+  would otherwise pause the game and training. Keep the laptop on power.
+- Stop with Ctrl-C; continue later with `uv run python train.py --run diamond1 --resume`
+  (`--total-steps` is then added on top of the steps already trained). Reusing a run name without
+  `--resume` is refused so old checkpoints are never mixed with a new run.
 - Watch the agent: `uv run python watch.py --run diamond1`.
 - Check the setup any time: `uv run python smoke.py` (game running, world open).
+
+The game ticks at 100 Hz while an agent is connected; change it with
+`./gradlew runClient -Pmcrl.tickRate=200` (likewise `-Pmcrl.port=5006`, then pass `--port` to the scripts).
 
 While training: keep the game window open (it can sit behind other windows, but don't minimize it)
 and don't open the pause menu — training simply stalls until you close it.
