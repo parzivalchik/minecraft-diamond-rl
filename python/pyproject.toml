@@ -1,0 +1,22 @@
+[project]
+name = "mcrl"
+version = "0.1.0"
+description = "Reinforcement-learning agent that learns to mine diamonds in Minecraft"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "gymnasium>=1.0",
+    "numpy>=1.26",
+    "stable-baselines3>=2.4",
+    "torch>=2.4",
+    "tensorboard>=2.17",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

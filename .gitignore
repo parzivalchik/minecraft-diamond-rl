@@ -1,0 +1,15 @@
+# Python
+python/.venv/
+python/runs/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Gradle / Fabric
+mod/.gradle/
+mod/build/
+mod/run/
+mod/.idea/
+*.iml
+
+.DS_Store
