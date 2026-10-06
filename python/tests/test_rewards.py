@@ -29,10 +29,10 @@ def test_idle_step_costs_step_penalty():
 @pytest.mark.parametrize("block,expected", [
     ("minecraft:diamond_ore", 10.0),
     ("minecraft:deepslate_diamond_ore", 10.0),
-    ("minecraft:iron_ore", 1.0),
-    ("minecraft:deepslate_iron_ore", 1.0),
-    ("minecraft:coal_ore", 0.5),
-    ("minecraft:deepslate_coal_ore", 0.5),
+    ("minecraft:iron_ore", 0.05),
+    ("minecraft:deepslate_iron_ore", 0.05),
+    ("minecraft:coal_ore", 0.05),
+    ("minecraft:deepslate_coal_ore", 0.05),
     ("minecraft:stone", 0.05),
     ("minecraft:deepslate", 0.05),
     ("minecraft:gravel", 0.0),
@@ -83,10 +83,10 @@ def test_distance_reward_only_on_new_minimum():
     r2, _ = t.compute(make_header(nearest_diamond_dist=9.0))   # moved away: nothing
     r3, _ = t.compute(make_header(nearest_diamond_dist=8.5))   # closer than 9 but not than 8
     r4, _ = t.compute(make_header(nearest_diamond_dist=7.0))
-    assert r1 == pytest.approx(0.2 * 2 + STEP)
+    assert r1 == pytest.approx(1.0 * 2 + STEP)
     assert r2 == pytest.approx(STEP)
     assert r3 == pytest.approx(STEP)
-    assert r4 == pytest.approx(0.2 * 1 + STEP)
+    assert r4 == pytest.approx(1.0 * 1 + STEP)
 
 
 def test_distance_baseline_resets_when_a_diamond_is_taken():
@@ -96,7 +96,7 @@ def test_distance_baseline_resets_when_a_diamond_is_taken():
                                   nearest_diamond_dist=9.0, diamonds_remaining=1))
     r2, _ = t.compute(make_header(nearest_diamond_dist=7.0, diamonds_remaining=1))
     assert r1 == pytest.approx(10.0 + STEP)
-    assert r2 == pytest.approx(0.2 * 2 + STEP)
+    assert r2 == pytest.approx(1.0 * 2 + STEP)
 
 
 def test_no_distance_reward_when_no_diamonds_left():

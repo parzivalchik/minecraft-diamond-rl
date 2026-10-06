@@ -13,7 +13,7 @@ from pathlib import Path
 
 @dataclass
 class Curriculum:
-    stage: int = 1
+    stage: int = 0
     max_stage: int = 2
     threshold: float = 0.6
     window: int = 100

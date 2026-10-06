@@ -173,7 +173,7 @@ def test_bridge_error_on_later_reset_is_retried(bridge, sleeps, capsys):
     env = make_env(bridge)
     env.reset(seed=0)
     obs, info = env.reset(seed=1)
-    assert obs["image"].shape == (64, 64, 12) and info == {"stage": 1}
+    assert obs["image"].shape == (64, 64, 12) and info == {"stage": 0}
     assert len(bridge.requests) == 3
     assert sleeps == [0.5]
     assert "rl_arena" in capsys.readouterr().out

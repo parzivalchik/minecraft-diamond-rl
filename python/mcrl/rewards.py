@@ -13,11 +13,11 @@ FIRE_SOURCES = frozenset({"lava", "in_fire", "on_fire"})
 @dataclass(frozen=True)
 class RewardConfig:
     diamond: float = 10.0
-    iron: float = 1.0
-    coal: float = 0.5
+    iron: float = 0.05
+    coal: float = 0.05
     stone: float = 0.05
     stone_cap: int = 20
-    closer_per_block: float = 0.2
+    closer_per_block: float = 1.0
     damage_per_heart: float = -0.5
     fire: float = -2.0
     death: float = -10.0

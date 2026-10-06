@@ -155,6 +155,12 @@ reward shaping**, never exposed to the policy.
 
 ## 7. Arena and curriculum
 
+### Stage 0 (added 2026-10-06)
+7×7×4 volume, same fill mix, **no lava**, 4–5 diamond ores of which at least 2 lie within 3 blocks
+of the spawn feet position. Added after the first 750k-step run plateaued at ~5% success: the agent
+must find diamonds often enough to learn that they pay before it has to search for them.
+Training starts here; advancement to stage 1 uses the same rule as below.
+
 ### Stage 1
 - 15×15×8 volume of random blocks, enclosed by bedrock walls and floor.
 - Spawn: 3×3×2 air pocket at top-center, facing slightly downward.
@@ -178,7 +184,7 @@ volume is filled by the shares above.
 
 ### Stage 3
 Real generated overworld terrain; spawn at Y −55 inside a pre-carved 3×3×2 pocket.
-(Arena-side specifics for stage 3 are deferred to a later spec; v1 implements stages 1–2.)
+(Arena-side specifics for stage 3 are deferred to a later spec; v1 implements stages 0–2.)
 
 ### Advancement
 Advance when ≥ 60% of the last 100 episodes at the current stage end with ≥ 1 diamond
@@ -192,10 +198,10 @@ Death, all diamonds in the arena broken, or 1,000 steps (truncation).
 | Event | Reward |
 |---|---|
 | `diamond_ore` / `deepslate_diamond_ore` broken | +10 |
-| iron ore (incl. deepslate variant) broken | +1 |
-| coal ore (incl. deepslate variant) broken | +0.5 |
+| iron ore (incl. deepslate variant) broken | +0.05 (was +1; ore farming crowded out diamonds) |
+| coal ore (incl. deepslate variant) broken | +0.05 (was +0.5) |
 | stone / deepslate broken | +0.05, only for the first 20 per episode |
-| new minimum `nearest_diamond_dist` this episode | +0.2 × blocks closer |
+| new minimum `nearest_diamond_dist` this episode | +1.0 × blocks closer (was +0.2) |
 | damage taken | −0.5 × hearts lost (amount / 2) |
 | damage with source `lava`, `in_fire`, or `on_fire` | additional −2 per step it occurs |
 | death | −10 (episode ends) |

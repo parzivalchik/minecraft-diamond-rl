@@ -9,6 +9,8 @@ public final class ArenaGenerator {
     static final double GRAVEL_SHARE = 0.03;
     static final double AIR_SHAFT_SHARE = 0.03;
     static final double MIN_LAVA_DISTANCE = 3.0;
+    /** Max distance from the spawn feet position for the stage's guaranteed near-spawn diamonds. */
+    public static final double NEAR_DIAMOND_RADIUS = 3.0;
     private static final int MAX_ATTEMPTS = 10_000;
     private static final int[][] NEIGHBORS = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
@@ -22,7 +24,7 @@ public final class ArenaGenerator {
         int lava = between(rng, cfg.minLava(), cfg.maxLava());
         for (int i = 0; i < lava; i++) placeLava(a, rng);
         int diamonds = between(rng, cfg.minDiamonds(), cfg.maxDiamonds());
-        for (int i = 0; i < diamonds; i++) placeDiamond(a, rng);
+        for (int i = 0; i < diamonds; i++) placeDiamond(a, rng, i < cfg.nearDiamonds() ? NEAR_DIAMOND_RADIUS : Double.MAX_VALUE);
         return a;
     }
 
@@ -70,12 +72,13 @@ public final class ArenaGenerator {
         throw new IllegalStateException("could not place lava in " + MAX_ATTEMPTS + " attempts");
     }
 
-    private static void placeDiamond(ArenaLayout a, Random rng) {
+    private static void placeDiamond(ArenaLayout a, Random rng, double maxDistanceToSpawn) {
         StageConfig cfg = a.config();
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             int x = 1 + rng.nextInt(cfg.sizeX()), y = 1 + rng.nextInt(cfg.sizeY() - 2), z = 1 + rng.nextInt(cfg.sizeZ());
             Cell here = a.get(x, y, z);
             if (here == Cell.LAVA || here == Cell.DIAMOND || a.underSpawnPocket(x, y, z)) continue;
+            if (distanceToSpawn(a, x, y, z) > maxDistanceToSpawn) continue;
             a.set(x, y, z, Cell.DIAMOND);
             return;
         }

@@ -22,12 +22,43 @@ class ArenaGeneratorTest {
         assertEquals(25, s2.sizeX());
         assertEquals(12, s2.sizeY());
         assertEquals(s2, StageConfig.largest());
-        assertThrows(IllegalArgumentException.class, () -> StageConfig.forStage(0));
+        assertThrows(IllegalArgumentException.class, () -> StageConfig.forStage(-1));
         assertThrows(IllegalArgumentException.class, () -> StageConfig.forStage(3));
     }
 
+    @Test
+    void stageZeroIsSmallLavaFreeAndRichInDiamonds() {
+        StageConfig s0 = StageConfig.forStage(0);
+        assertEquals(7, s0.sizeX());
+        assertEquals(4, s0.sizeY());
+        assertEquals(7, s0.sizeZ());
+        for (long seed = 0; seed < SEEDS; seed++) {
+            ArenaLayout a = ArenaGenerator.generate(seed, s0);
+            int diamonds = a.count(Cell.DIAMOND);
+            assertTrue(diamonds >= 4 && diamonds <= 5, "seed " + seed + ": " + diamonds + " diamonds");
+            assertEquals(0, a.count(Cell.LAVA), "seed " + seed);
+        }
+    }
+
     @ParameterizedTest
-    @ValueSource(ints = {1, 2})
+    @ValueSource(ints = {0, 1, 2})
+    void nearSpawnDiamondsAreWithinRadius(int stage) {
+        StageConfig cfg = StageConfig.forStage(stage);
+        for (long seed = 0; seed < SEEDS; seed++) {
+            ArenaLayout a = ArenaGenerator.generate(seed, cfg);
+            int[] near = {0};
+            forEachCell(a, (x, y, z) -> {
+                if (a.get(x, y, z) != Cell.DIAMOND) return;
+                double d = Math.sqrt(sq(x - a.spawnX()) + sq(y - a.spawnY()) + sq(z - a.spawnZ()));
+                if (d <= ArenaGenerator.NEAR_DIAMOND_RADIUS) near[0]++;
+            });
+            assertTrue(near[0] >= cfg.nearDiamonds(), "seed " + seed + ": only " + near[0] + " near-spawn diamonds");
+        }
+        if (stage == 0) assertEquals(2, cfg.nearDiamonds());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2})
     void deterministicForSameSeed(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         assertArrayEquals(ArenaGenerator.generate(42, cfg).snapshot(),
@@ -37,7 +68,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {1, 2})
+    @ValueSource(ints = {0, 1, 2})
     void diamondAndLavaCountsInRange(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         for (long seed = 0; seed < SEEDS; seed++) {
@@ -50,7 +81,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {1, 2})
+    @ValueSource(ints = {0, 1, 2})
     void lavaIsFarFromSpawnAndSealed(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         int[][] dirs = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
@@ -69,7 +100,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {1, 2})
+    @ValueSource(ints = {0, 1, 2})
     void spawnPocketIsAirWithSolidStoneFloor(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         for (long seed = 0; seed < SEEDS; seed++) {
@@ -87,7 +118,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {1, 2})
+    @ValueSource(ints = {0, 1, 2})
     void diamondsAreBelowTheSurface(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         for (long seed = 0; seed < SEEDS; seed++) {
@@ -101,7 +132,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {1, 2})
+    @ValueSource(ints = {0, 1, 2})
     void enclosedByBedrock(int stage) {
         ArenaLayout a = ArenaGenerator.generate(7, StageConfig.forStage(stage));
         forEachCell(a, (x, y, z) -> {
