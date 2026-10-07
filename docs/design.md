@@ -11,7 +11,8 @@ mod (the environment) and a Python training stack (the learner).
 
 ### Success criteria
 
-- Stage 1: ≥ 60% of the last 100 episodes break at least one diamond ore with no death.
+- Stage 3 (the 15×15 arena; called stage 1 before 2026-10-07): ≥ 60% of the last 100 episodes
+  break at least one diamond ore with no death.
 - The training run can be stopped and resumed from checkpoints without loss.
 - The environment sustains ≥ 20 steps/sec on the target machine.
 
@@ -20,7 +21,7 @@ mod (the environment) and a Python training stack (the learner).
 - Target machine: Apple M2, 8 GB RAM → exactly **one** Minecraft client at a time.
 - Minecraft **1.21.1**, **Fabric**, Java 21.
 - Python **3.12** in a project-local `uv` virtual environment (system Python 3.14 untouched).
-- Expected training time: 1–3 days of background running to reach the stage-1 criterion.
+- Expected training time: 1–3 days of background running to reach the stage-3 criterion.
 
 ### Non-goals (v1)
 
@@ -66,6 +67,9 @@ decides rewards, curriculum, and learning.** Reward tuning never requires a mod 
 - **Attack is held continuously across consecutive attacking steps** (actions 10, 11)
   so block-breaking progress is not reset between steps. Attack is released when the
   next action does not attack.
+- **Action 12 (tunnel_forward)** is a macro step whose length varies: the server breaks the 1×2
+  blocks ahead and the step lasts their survival break time plus a short walk (see §5); server
+  and client still advance the same number of ticks.
 - Between steps the game does not advance (integrated server paused / tick-frozen),
   so Python compute time never desyncs the simulation.
 - Pitch is clamped to [-90°, 90°].
@@ -108,7 +112,9 @@ Framing: every message = 4-byte big-endian length + payload.
   "health": 20.0,
   "food": 20,
   "on_fire": false,
+  "x": 4.5,
   "y": -58.0,
+  "z": 7.7,
   "yaw": 90.0,
   "pitch": 15.0,
   "nearest_diamond_dist": 6.4,
@@ -122,6 +128,8 @@ Framing: every message = 4-byte big-endian length + payload.
 }
 ```
 `events` contains only what happened during that step (empty list on `reset`).
+`x` and `z` (player position, added 2026-10-07) are, like `y`, for tests and diagnostics only —
+never part of the observation.
 
 ### Error reply
 `{"error": "<message>"}` with a frame length of 0.
@@ -130,16 +138,32 @@ Framing: every message = 4-byte big-endian length + payload.
 Socket drop → reconnect with exponential backoff (0.5 s → max 10 s); the in-progress
 episode is discarded and the env performs a fresh `reset`.
 
-## 5. Action space (Discrete(12))
+## 5. Action space (Discrete(13))
 
 | # | Action           | # | Action           |
 |---|------------------|---|------------------|
-| 0 | no-op            | 6 | turn left 15°    |
-| 1 | forward          | 7 | turn right 15°   |
-| 2 | back             | 8 | look up 15°      |
-| 3 | strafe left      | 9 | look down 15°    |
-| 4 | strafe right     | 10| attack (mine)    |
-| 5 | jump + forward   | 11| forward + attack |
+| 0 | no-op            | 7 | turn right 15°   |
+| 1 | forward          | 8 | look up 15°      |
+| 2 | back             | 9 | look down 15°    |
+| 3 | strafe left      | 10| attack (mine)    |
+| 4 | strafe right     | 11| forward + attack |
+| 5 | jump + forward   | 12| tunnel forward   |
+| 6 | turn left 15°    |   |                  |
+
+**Action 12, tunnel forward (added 2026-10-07).** Reaching a diamond 5–10 blocks away needs
+sideways tunnelling, which with actions 0–11 takes ~6 coordinated look/attack/move steps per block;
+the stage-0 agent of run diamond2 never learned that and stalled at ~6% on the 15×15 arena.
+One tunnel step:
+- snaps yaw to the nearest cardinal (N/E/S/W), pitch unchanged, and centres the player sideways in
+  its block column so the 0.6-wide hitbox fits the tunnel;
+- breaks (no drops) the solid blocks directly ahead at foot and head level, each reported as one
+  `block_broken` event; air and fluids (lava, water) are left alone — walking into lava is the
+  agent's risk, as with plain movement;
+- lasts `max(4, breakTicks(head) + breakTicks(feet) + 6)` game ticks, where
+  `breakTicks = ceil(1 / per-tick survival break progress)` with the held iron pickaxe (stone 8,
+  deepslate / ores 15, gravel 18, deepslate diamond ore 23): the player stands still for the break
+  time, then holds forward for the last 6 ticks (~1 block);
+- if either target is unbreakable (bedrock): does nothing and costs a normal 4-tick step.
 
 The mapping lives in the mod; Python sends only the index. Python keeps a matching
 name table for logging.
@@ -155,13 +179,28 @@ reward shaping**, never exposed to the policy.
 
 ## 7. Arena and curriculum
 
-### Stage 0 (added 2026-10-06)
-7×7×4 volume, same fill mix, **no lava**, 4–5 diamond ores of which at least 2 lie within 3 blocks
-of the spawn feet position. Added after the first 750k-step run plateaued at ~5% success: the agent
-must find diamonds often enough to learn that they pay before it has to search for them.
-Training starts here; advancement to stage 1 uses the same rule as below.
+### Stages (renumbered 2026-10-07)
 
-### Stage 1
+| Stage | Interior (x×y×z) | Diamonds | Near-spawn diamonds | Near radius | Lava |
+|---|---|---|---|---|---|
+| 0 | 7×4×7 | 4–5 | 2 | 3 | 0 |
+| 1 | 9×5×9 | 3–4 | 1 | 5 | 0 |
+| 2 | 11×6×11 | 3 | 1 | 7 | 1 |
+| 3 | 15×8×15 | 2–3 | 0 | – | 1–2 |
+| 4 | 25×12×25 | 1–2 | 0 | – | 3–4 |
+
+"Near-spawn" diamonds lie within the stage's radius of the spawn feet position. All stages use the
+same fill mix and enclosure rules (below).
+
+History: stage 0 (7×7, added 2026-10-06) came after the first 750k-step run plateaued at ~5%
+success — the agent must find diamonds often enough to learn that they pay before it has to search.
+On 2026-10-07 run diamond2 had learned stage 0 but sat at ~6% on the 15×15 arena, whose diamonds
+are 5–10 blocks away; stages 1–2 were inserted as intermediate steps (each with one diamond a short
+tunnel from spawn), and together with the tunnel action (§5) bridge that gap. The former stages
+1 and 2 are now stages 3 and 4 (unchanged apart from their number), so curriculum files and
+checkpoints from earlier runs do not carry over.
+
+### Stage 3 (15×15, formerly stage 1)
 - 15×15×8 volume of random blocks, enclosed by bedrock walls and floor.
 - Spawn: 3×3×2 air pocket at top-center, facing slightly downward.
 - Fill distribution (by volume, reshuffled per episode):
@@ -179,12 +218,12 @@ Training starts here; advancement to stage 1 uses the same rule as below.
 Diamond ore and lava pockets are placed explicitly (not by share); the remaining
 volume is filled by the shares above.
 
-### Stage 2
+### Stage 4 (formerly stage 2)
 25×25×12 volume, 1–2 diamond ores, 3–4 lava pockets, same enclosure rules.
 
-### Stage 3
+### Future: real terrain
 Real generated overworld terrain; spawn at Y −55 inside a pre-carved 3×3×2 pocket.
-(Arena-side specifics for stage 3 are deferred to a later spec; v1 implements stages 0–2.)
+(Deferred to a later spec; v1 implements stages 0–4. This was "stage 3" before 2026-10-07.)
 
 ### Advancement
 Advance when ≥ 60% of the last 100 episodes at the current stage end with ≥ 1 diamond

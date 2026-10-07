@@ -45,6 +45,12 @@ cd python && uv run tensorboard --logdir runs           # optional: http://local
 - Watch the agent: `uv run python watch.py --run diamond1`.
 - Check the setup any time: `uv run python smoke.py` (game running, world open).
 
+The agent has 13 actions: movement, turning, attacking, and **tunnel forward** (action 12), a
+macro that digs the 1×2 blocks ahead and walks into the gap, charged the real break time in game
+ticks. The curriculum has stages 0–4 (7×7 → 9×9 → 11×11 → 15×15 → 25×25 arenas); the agent advances
+at ≥ 60% success over 100 episodes. Runs started before 2026-10-07 (12 actions, old stage numbers)
+cannot be resumed — start a new run name.
+
 The game ticks at 100 Hz while an agent is connected; change it with
 `./gradlew runClient -Pmcrl.tickRate=200` (likewise `-Pmcrl.port=5006`, then pass `--port` to the scripts).
 
