@@ -17,6 +17,8 @@ class ProtocolTest {
     void parsesValidRequests() {
         assertEquals(new Request("reset", 0, 1234L, 1), parse("{\"cmd\":\"reset\",\"seed\":1234,\"stage\":1}"));
         assertEquals(new Request("step", 7, 0L, 0), parse("{\"cmd\":\"step\",\"action\":7}"));
+        assertEquals(new Request("step", 12, 0L, 0), parse("{\"cmd\":\"step\",\"action\":12}"));
+        assertEquals(new Request("reset", 0, 5L, 4), parse("{\"cmd\":\"reset\",\"seed\":5,\"stage\":4}"));
         assertEquals(new Request("close", 0, 0L, 0), parse("{\"cmd\":\"close\"}"));
     }
 
@@ -27,9 +29,9 @@ class ProtocolTest {
         assertThrows(IllegalArgumentException.class, () -> parse("{\"action\":1}"));
         assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"fly\"}"));
         assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"step\"}"));
-        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"step\",\"action\":12}"));
+        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"step\",\"action\":13}"));
         assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"step\",\"action\":\"x\"}"));
-        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"reset\",\"seed\":1,\"stage\":3}"));
+        assertThrows(IllegalArgumentException.class, () -> parse("{\"cmd\":\"reset\",\"seed\":1,\"stage\":5}"));
     }
 
     @Test

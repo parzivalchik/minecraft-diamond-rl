@@ -12,26 +12,41 @@ class ArenaGeneratorTest {
     private static final int SEEDS = 200;
 
     @Test
-    void stageConfigs() {
-        StageConfig s1 = StageConfig.forStage(1);
-        assertEquals(15, s1.sizeX());
-        assertEquals(8, s1.sizeY());
-        assertEquals(17, s1.width());
-        assertEquals(12, s1.height());
-        StageConfig s2 = StageConfig.forStage(2);
-        assertEquals(25, s2.sizeX());
-        assertEquals(12, s2.sizeY());
-        assertEquals(s2, StageConfig.largest());
+    void stageTable() {
+        // stage, interior x/y/z, diamonds min-max, near-spawn diamonds, near radius, lava min-max
+        assertEquals(new StageConfig(0, 7, 4, 7, 4, 5, 0, 0, 2, 3.0), StageConfig.forStage(0));
+        assertEquals(new StageConfig(1, 9, 5, 9, 3, 4, 0, 0, 1, 5.0), StageConfig.forStage(1));
+        assertEquals(new StageConfig(2, 11, 6, 11, 3, 3, 1, 1, 1, 7.0), StageConfig.forStage(2));
+        assertEquals(new StageConfig(3, 15, 8, 15, 2, 3, 1, 2, 0, 0.0), StageConfig.forStage(3));
+        assertEquals(new StageConfig(4, 25, 12, 25, 1, 2, 3, 4, 0, 0.0), StageConfig.forStage(4));
+    }
+
+    @Test
+    void stageDimensionsAndLimits() {
+        StageConfig s3 = StageConfig.forStage(3);
+        assertEquals(17, s3.width());
+        assertEquals(12, s3.height());
+        assertEquals(17, s3.depth());
+        StageConfig s4 = StageConfig.forStage(4);
+        assertEquals(s4, StageConfig.largest());
+        for (int stage = 0; stage <= 4; stage++) {
+            StageConfig cfg = StageConfig.forStage(stage);
+            assertTrue(cfg.width() <= s4.width() && cfg.height() <= s4.height() && cfg.depth() <= s4.depth(),
+                    "stage " + stage + " fits in the cleared region");
+        }
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> StageConfig.forStage(5));
+        assertEquals("stage 5 is not implemented (valid: 0-4)", e.getMessage());
         assertThrows(IllegalArgumentException.class, () -> StageConfig.forStage(-1));
-        assertThrows(IllegalArgumentException.class, () -> StageConfig.forStage(3));
+    }
+
+    @Test
+    void nearDiamondsNeedAPositiveRadius() {
+        assertThrows(IllegalArgumentException.class, () -> new StageConfig(9, 7, 4, 7, 4, 5, 0, 0, 2, 0.0));
     }
 
     @Test
     void stageZeroIsSmallLavaFreeAndRichInDiamonds() {
         StageConfig s0 = StageConfig.forStage(0);
-        assertEquals(7, s0.sizeX());
-        assertEquals(4, s0.sizeY());
-        assertEquals(7, s0.sizeZ());
         for (long seed = 0; seed < SEEDS; seed++) {
             ArenaLayout a = ArenaGenerator.generate(seed, s0);
             int diamonds = a.count(Cell.DIAMOND);
@@ -41,7 +56,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2})
+    @ValueSource(ints = {0, 1, 2, 3, 4})
     void nearSpawnDiamondsAreWithinRadius(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         for (long seed = 0; seed < SEEDS; seed++) {
@@ -50,15 +65,14 @@ class ArenaGeneratorTest {
             forEachCell(a, (x, y, z) -> {
                 if (a.get(x, y, z) != Cell.DIAMOND) return;
                 double d = Math.sqrt(sq(x - a.spawnX()) + sq(y - a.spawnY()) + sq(z - a.spawnZ()));
-                if (d <= ArenaGenerator.NEAR_DIAMOND_RADIUS) near[0]++;
+                if (d <= cfg.nearRadius()) near[0]++;
             });
             assertTrue(near[0] >= cfg.nearDiamonds(), "seed " + seed + ": only " + near[0] + " near-spawn diamonds");
         }
-        if (stage == 0) assertEquals(2, cfg.nearDiamonds());
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2})
+    @ValueSource(ints = {0, 1, 2, 3, 4})
     void deterministicForSameSeed(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         assertArrayEquals(ArenaGenerator.generate(42, cfg).snapshot(),
@@ -68,7 +82,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2})
+    @ValueSource(ints = {0, 1, 2, 3, 4})
     void diamondAndLavaCountsInRange(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         for (long seed = 0; seed < SEEDS; seed++) {
@@ -81,7 +95,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2})
+    @ValueSource(ints = {0, 1, 2, 3, 4})
     void lavaIsFarFromSpawnAndSealed(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         int[][] dirs = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
@@ -100,7 +114,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2})
+    @ValueSource(ints = {0, 1, 2, 3, 4})
     void spawnPocketIsAirWithSolidStoneFloor(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         for (long seed = 0; seed < SEEDS; seed++) {
@@ -118,7 +132,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2})
+    @ValueSource(ints = {0, 1, 2, 3, 4})
     void diamondsAreBelowTheSurface(int stage) {
         StageConfig cfg = StageConfig.forStage(stage);
         for (long seed = 0; seed < SEEDS; seed++) {
@@ -132,7 +146,7 @@ class ArenaGeneratorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2})
+    @ValueSource(ints = {0, 1, 2, 3, 4})
     void enclosedByBedrock(int stage) {
         ArenaLayout a = ArenaGenerator.generate(7, StageConfig.forStage(stage));
         forEachCell(a, (x, y, z) -> {
@@ -150,7 +164,7 @@ class ArenaGeneratorTest {
 
     @Test
     void fillIsMostlyStone() {
-        ArenaLayout a = ArenaGenerator.generate(1, StageConfig.forStage(2));
+        ArenaLayout a = ArenaGenerator.generate(1, StageConfig.forStage(4));
         StageConfig cfg = a.config();
         double interior = cfg.sizeX() * cfg.sizeY() * cfg.sizeZ();
         double stone = a.count(Cell.STONE) / interior;
@@ -160,7 +174,7 @@ class ArenaGeneratorTest {
 
     @Test
     void deepLayersAreTheLowerHalf() {
-        ArenaLayout a = ArenaGenerator.generate(1, StageConfig.forStage(1));
+        ArenaLayout a = ArenaGenerator.generate(1, StageConfig.forStage(3));
         assertFalse(a.isDeep(0));
         assertTrue(a.isDeep(1));
         assertTrue(a.isDeep(4));

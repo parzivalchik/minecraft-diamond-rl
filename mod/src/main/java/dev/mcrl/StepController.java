@@ -2,6 +2,7 @@ package dev.mcrl;
 
 import com.google.gson.JsonObject;
 import dev.mcrl.arena.ArenaManager;
+import dev.mcrl.arena.TunnelPlan;
 import dev.mcrl.bridge.Request;
 import dev.mcrl.bridge.RlBridgeServer;
 import dev.mcrl.bridge.RlBridgeServer.Pending;
@@ -34,6 +35,10 @@ import java.util.concurrent.TimeoutException;
  * that begins a step is also its first ACTING tick: a step costs exactly N client ticks (plus Python's
  * round trip), not N + 1.
  *
+ * <p>Action 12 (tunnel_forward) is a macro step: its server-side dig decides the step length
+ * (break time + walk, at least TICKS_PER_STEP); the player stands still while the break time elapses and
+ * holds forward for the last TunnelPlan.WALK_TICKS ticks. Server and client still advance the same N ticks.
+ *
  * <p>Known limitation: a tick-frozen server still ticks players, so the agent's own physics (falling,
  * sliding) and fire/lava damage keep advancing between steps. That idle drift is bounded by how long
  * Python is not stepping: usually a tick or so of reply latency, but several seconds during PPO's
@@ -62,6 +67,8 @@ public final class StepController {
     private State state = State.IDLE;
     private Pending current;
     private Actions.Spec spec = Actions.NOOP;
+    /** For a tunnel step: whether forward is held for its last WALK_TICKS ticks. */
+    private boolean tunnelWalk;
     private int ticksLeft;
     private int awaitTicks;
     private boolean ownsKeys;
@@ -91,7 +98,13 @@ public final class StepController {
             return;
         }
         ownsKeys = true;
-        setMovementKeys(client.options, state == State.ACTING ? spec : Actions.NOOP);
+        setMovementKeys(client.options, state == State.ACTING ? actingKeys() : Actions.NOOP);
+    }
+
+    /** Keys for the ACTING tick about to run; ticksLeft counts this tick, so the last WALK_TICKS walk. */
+    private Actions.Spec actingKeys() {
+        if (!spec.tunnel()) return spec;
+        return tunnelWalk && ticksLeft <= TunnelPlan.WALK_TICKS ? Actions.TUNNEL_WALK : Actions.NOOP;
     }
 
     /** Counts the tick that just ran: ACTING ticks toward the step, AWAIT_FRAME ticks toward the watchdog. */
@@ -181,13 +194,24 @@ public final class StepController {
                 onServer(server.submit(() -> arena.reset(server, server.getPlayerManager().getPlayer(id),
                         request.seed(), request.stage())));
                 spec = Actions.NOOP;
+                tunnelWalk = false;
                 ticksLeft = RESET_SETTLE_TICKS;
             } else {
                 spec = Actions.of(request.action());
                 ClientPlayerEntity player = client.player;
-                player.setYaw(player.getYaw() + spec.dYaw());
-                player.setPitch(Actions.clampPitch(player.getPitch() + spec.dPitch()));
-                ticksLeft = TICKS_PER_STEP;
+                if (spec.tunnel()) {
+                    float yaw = TunnelPlan.cardinalYaw(player.getYaw());
+                    player.setYaw(yaw);
+                    TunnelPlan plan = onServer(server.submit(() -> arena.tunnel(
+                            server.getPlayerManager().getPlayer(id), yaw, TICKS_PER_STEP)));
+                    tunnelWalk = plan.walk();
+                    ticksLeft = plan.ticks();
+                } else {
+                    player.setYaw(player.getYaw() + spec.dYaw());
+                    player.setPitch(Actions.clampPitch(player.getPitch() + spec.dPitch()));
+                    tunnelWalk = false;
+                    ticksLeft = TICKS_PER_STEP;
+                }
             }
             int ticks = ticksLeft;
             server.execute(() -> server.getTickManager().step(ticks));
@@ -236,6 +260,7 @@ public final class StepController {
 
     private void fail(String message) {
         spec = Actions.NOOP;
+        tunnelWalk = false;
         complete(Reply.error(message));
     }
 

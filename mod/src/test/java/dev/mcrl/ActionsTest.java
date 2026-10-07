@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ActionsTest {
     @Test
-    void hasTwelveActions() {
-        assertEquals(12, Actions.COUNT);
+    void hasThirteenActions() {
+        assertEquals(13, Actions.COUNT);
         for (int i = 0; i < Actions.COUNT; i++) {
             assertNotNull(Actions.of(i));
         }
@@ -16,7 +16,7 @@ class ActionsTest {
     @Test
     void rejectsOutOfRange() {
         assertThrows(IllegalArgumentException.class, () -> Actions.of(-1));
-        assertThrows(IllegalArgumentException.class, () -> Actions.of(12));
+        assertThrows(IllegalArgumentException.class, () -> Actions.of(13));
     }
 
     @Test
@@ -53,6 +53,27 @@ class ActionsTest {
         for (int i = 0; i < 10; i++) {
             assertFalse(Actions.of(i).attack(), "action " + i);
         }
+    }
+
+    @Test
+    void tunnelForwardIsAction12AndOnlyThatOne() {
+        Actions.Spec t = Actions.of(12);
+        assertTrue(t.tunnel());
+        // The tunnel macro drives its own keys (still while breaking, forward while walking).
+        assertFalse(t.forward() || t.back() || t.left() || t.right() || t.jump() || t.attack());
+        assertEquals(0f, t.dYaw());
+        assertEquals(0f, t.dPitch());
+        assertEquals(12, Actions.TUNNEL_FORWARD);
+        for (int i = 0; i < 12; i++) {
+            assertFalse(Actions.of(i).tunnel(), "action " + i);
+        }
+    }
+
+    @Test
+    void walkingSpecHoldsOnlyForward() {
+        Actions.Spec w = Actions.TUNNEL_WALK;
+        assertTrue(w.forward());
+        assertFalse(w.back() || w.left() || w.right() || w.jump() || w.attack() || w.tunnel());
     }
 
     @Test

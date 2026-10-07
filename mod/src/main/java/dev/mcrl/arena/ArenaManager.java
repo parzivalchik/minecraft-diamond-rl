@@ -74,6 +74,12 @@ public final class ArenaManager {
         tracker.reset();
     }
 
+    /** Action 12 (tunnel_forward): digs on the server and returns how long the step lasts. */
+    public TunnelPlan tunnel(ServerPlayerEntity player, float cardinalYaw, int minTicks) {
+        if (player == null) throw new IllegalStateException("server player not found");
+        return Tunneler.dig(player, cardinalYaw, tracker, minTicks);
+    }
+
     public JsonObject observe(MinecraftServer server, ServerPlayerEntity player) {
         if (player == null) throw new IllegalStateException("server player not found");
         ServerWorld world = player.getServerWorld();
@@ -84,7 +90,9 @@ public final class ArenaManager {
         h.addProperty("health", dead ? 0f : player.getHealth());
         h.addProperty("food", player.getHungerManager().getFoodLevel());
         h.addProperty("on_fire", player.isOnFire());
+        h.addProperty("x", player.getX());
         h.addProperty("y", player.getY());
+        h.addProperty("z", player.getZ());
         h.addProperty("yaw", player.getYaw());
         h.addProperty("pitch", player.getPitch());
         h.addProperty("nearest_diamond_dist", nearestDiamond(player.getEyePos()));

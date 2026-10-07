@@ -9,8 +9,6 @@ public final class ArenaGenerator {
     static final double GRAVEL_SHARE = 0.03;
     static final double AIR_SHAFT_SHARE = 0.03;
     static final double MIN_LAVA_DISTANCE = 3.0;
-    /** Max distance from the spawn feet position for the stage's guaranteed near-spawn diamonds. */
-    public static final double NEAR_DIAMOND_RADIUS = 3.0;
     private static final int MAX_ATTEMPTS = 10_000;
     private static final int[][] NEIGHBORS = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
 
@@ -24,7 +22,7 @@ public final class ArenaGenerator {
         int lava = between(rng, cfg.minLava(), cfg.maxLava());
         for (int i = 0; i < lava; i++) placeLava(a, rng);
         int diamonds = between(rng, cfg.minDiamonds(), cfg.maxDiamonds());
-        for (int i = 0; i < diamonds; i++) placeDiamond(a, rng, i < cfg.nearDiamonds() ? NEAR_DIAMOND_RADIUS : Double.MAX_VALUE);
+        for (int i = 0; i < diamonds; i++) placeDiamond(a, rng, i < cfg.nearDiamonds() ? cfg.nearRadius() : Double.MAX_VALUE);
         return a;
     }
 

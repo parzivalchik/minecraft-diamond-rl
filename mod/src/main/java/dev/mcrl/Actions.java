@@ -1,14 +1,26 @@
 package dev.mcrl;
 
-/** The 12 discrete agent actions (spec §5). Turning right is +yaw; looking up is -pitch. */
+/**
+ * The 13 discrete agent actions (spec §5). Turning right is +yaw; looking up is -pitch.
+ * Action 12 (tunnel_forward) is a macro: StepController drives its keys itself (see {@link #TUNNEL_WALK}).
+ */
 public final class Actions {
-    public static final int COUNT = 12;
+    public static final int COUNT = 13;
+    public static final int TUNNEL_FORWARD = 12;
     public static final float TURN_DEGREES = 15f;
 
     public record Spec(boolean forward, boolean back, boolean left, boolean right,
-                       boolean jump, boolean attack, float dYaw, float dPitch) {}
+                       boolean jump, boolean attack, float dYaw, float dPitch, boolean tunnel) {
+        Spec(boolean forward, boolean back, boolean left, boolean right,
+             boolean jump, boolean attack, float dYaw, float dPitch) {
+            this(forward, back, left, right, jump, attack, dYaw, dPitch, false);
+        }
+    }
 
     public static final Spec NOOP = new Spec(false, false, false, false, false, false, 0f, 0f);
+    /** Keys held during the walking part of a tunnel_forward step. */
+    public static final Spec TUNNEL_WALK = new Spec(true, false, false, false, false, false, 0f, 0f);
+    private static final Spec TUNNEL = new Spec(false, false, false, false, false, false, 0f, 0f, true);
 
     private Actions() {}
 
@@ -26,6 +38,7 @@ public final class Actions {
             case 9 -> new Spec(false, false, false, false, false, false, 0f, TURN_DEGREES);
             case 10 -> new Spec(false, false, false, false, false, true, 0f, 0f);
             case 11 -> new Spec(true, false, false, false, false, true, 0f, 0f);
+            case TUNNEL_FORWARD -> TUNNEL;
             default -> throw new IllegalArgumentException("action out of range: " + action);
         };
     }
