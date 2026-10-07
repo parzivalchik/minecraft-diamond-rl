@@ -1,7 +1,14 @@
 # Minecraft Diamond-Finding RL Bot — Design
 
-Date: 2026-10-05
-Status: Draft for review
+| | |
+|---|---|
+| **Author** | Amiraly Bekturganov |
+| **Written** | 2026-10-05, updated 2026-10-07 |
+| **Status** | Implemented. Stages 0–1 solved (97–100% success); stage 2 in progress (24%, lava deaths). The stage-3 success criterion below is not met yet. |
+| **Results** | See [Results so far](../README.md#results-so-far) in the README |
+
+This is the design the code follows. Where training changed the plan (new stages 0–2, the
+tunnel action, reward weights), the sections below were updated to match.
 
 ## 1. Goal
 
