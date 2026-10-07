@@ -357,7 +357,7 @@ python/
   mcrl/training.py                     PPO construction, checkpoints, TensorBoard metrics
   train.py / watch.py / smoke.py       entry points
   tests/                               pytest suite incl. a fake game server
-docs/                design spec
+docs/design.md                         design spec
 ```
 
 ---
