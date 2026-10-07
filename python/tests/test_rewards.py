@@ -53,6 +53,23 @@ def test_stone_reward_capped_at_20_per_episode():
     assert total == pytest.approx(20 * 0.05 + 25 * STEP)
 
 
+def test_ores_share_the_stone_cap():
+    # Tunnelling breaks many blocks; uncapped ore rewards would make "tunnel anywhere" pay without diamonds.
+    t = tracker()
+    for _ in range(20):
+        t.compute(make_header(events=[broken("minecraft:stone")]))
+    reward, _ = t.compute(make_header(events=[broken("minecraft:iron_ore"), broken("minecraft:coal_ore")]))
+    assert reward == pytest.approx(STEP)
+
+
+def test_diamonds_are_never_capped():
+    t = tracker()
+    for _ in range(20):
+        t.compute(make_header(events=[broken("minecraft:stone")]))
+    reward, _ = t.compute(make_header(events=[broken("minecraft:diamond_ore")]))
+    assert reward == pytest.approx(10.0 + STEP)
+
+
 def test_stone_cap_resets_each_episode():
     t = tracker()
     for _ in range(20):

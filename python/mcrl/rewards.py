@@ -49,13 +49,13 @@ class RewardTracker:
                 if block in DIAMOND_BLOCKS:
                     reward += c.diamond
                     diamonds += 1
-                elif block in IRON_BLOCKS:
-                    reward += c.iron
-                elif block in COAL_BLOCKS:
-                    reward += c.coal
-                elif block in STONE_BLOCKS and self._stone_paid < c.stone_cap:
-                    reward += c.stone
-                    self._stone_paid += 1
+                elif self._stone_paid < c.stone_cap:
+                    # Stone and ores share one per-episode cap so tunnelling can't farm reward without diamonds.
+                    paid = (c.iron if block in IRON_BLOCKS else c.coal if block in COAL_BLOCKS
+                            else c.stone if block in STONE_BLOCKS else 0.0)
+                    if paid:
+                        reward += paid
+                        self._stone_paid += 1
             elif event["type"] == "damage":
                 reward += c.damage_per_heart * (float(event["amount"]) / 2.0)
                 if event["source"] in FIRE_SOURCES:

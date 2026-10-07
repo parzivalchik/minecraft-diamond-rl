@@ -239,7 +239,7 @@ Death, all diamonds in the arena broken, or 1,000 steps (truncation).
 | `diamond_ore` / `deepslate_diamond_ore` broken | +10 |
 | iron ore (incl. deepslate variant) broken | +0.05 (was +1; ore farming crowded out diamonds) |
 | coal ore (incl. deepslate variant) broken | +0.05 (was +0.5) |
-| stone / deepslate broken | +0.05, only for the first 20 per episode |
+| stone / deepslate broken | +0.05; stone, deepslate, coal and iron share one cap of 20 paid blocks per episode (shared since 2026-10-07, so tunnelling cannot farm ore) |
 | new minimum `nearest_diamond_dist` this episode | +1.0 × blocks closer (was +0.2) |
 | damage taken | −0.5 × hearts lost (amount / 2) |
 | damage with source `lava`, `in_fire`, or `on_fire` | additional −2 per step it occurs |
