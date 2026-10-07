@@ -14,7 +14,7 @@ from pathlib import Path
 @dataclass
 class Curriculum:
     stage: int = 0
-    max_stage: int = 2
+    max_stage: int = 4  # must match StageConfig.MAX_STAGE in the mod
     threshold: float = 0.6
     window: int = 100
     history: deque = field(default_factory=deque)

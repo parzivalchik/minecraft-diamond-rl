@@ -42,6 +42,21 @@ def test_window_slides():
     assert c.success_rate() == pytest.approx(0.5)
 
 
+def test_default_max_stage_is_4():
+    assert Curriculum().max_stage == 4
+    c = Curriculum(window=2, stage=3)
+    c.record(True)
+    assert c.record(True) is True
+    assert c.stage == 4
+    c.record(True)
+    assert c.record(True) is False
+    assert c.stage == 4
+
+
+def test_from_dict_keeps_default_max_stage():
+    assert Curriculum.from_dict({"stage": 3, "history": []}).max_stage == 4
+
+
 def test_never_exceeds_max_stage():
     c = Curriculum(window=2, max_stage=2, stage=2)
     c.record(True)

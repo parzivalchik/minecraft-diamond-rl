@@ -13,7 +13,8 @@ def make_env(bridge, **kwargs):
 
 def test_spaces():
     env = MinecraftEnv(client=BridgeClient(port=1))
-    assert env.action_space.n == 12 == len(ACTION_NAMES)
+    assert env.action_space.n == 13 == len(ACTION_NAMES)
+    assert ACTION_NAMES[12] == "tunnel_forward"
     assert env.observation_space["image"].shape == (64, 64, 12)
     assert env.observation_space["image"].dtype == np.uint8
     assert env.observation_space["state"].shape == (3,)

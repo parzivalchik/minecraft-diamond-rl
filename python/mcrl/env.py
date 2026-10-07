@@ -19,6 +19,7 @@ _sleep = time.sleep  # indirection so tests can skip the back-off waits
 ACTION_NAMES = [
     "noop", "forward", "back", "strafe_left", "strafe_right", "jump_forward",
     "turn_left", "turn_right", "look_up", "look_down", "attack", "forward_attack",
+    "tunnel_forward",  # macro: dig the 1x2 block ahead (break time charged in ticks), then walk into it
 ]
 
 
