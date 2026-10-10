@@ -266,7 +266,8 @@ progress carries over (vanilla would reset it).
 **Tunnel forward** turns to the nearest cardinal direction, breaks the block ahead at foot and head
 level, and walks one block into the gap. It costs the **real** mining time with an iron pickaxe
 (stone ≈ 8 ticks, deepslate/ores ≈ 15), so it is a shortcut for the *decision*, not a cheat on
-time. Bedrock blocks it; lava is not broken and walking into it is the agent's risk.
+time. Bedrock blocks it. If the dig exposes lava (in or next to the opening), it mines but does not
+step forward; plain movement can still walk into lava, so the agent still has to learn to avoid it.
 It exists because tunnelling sideways with actions 0–11 needs ~6 perfectly coordinated steps per
 block, which the agent never discovered on its own (see [Results](#results-so-far)).
 
@@ -325,8 +326,8 @@ Three iterations, each fixing what the previous one revealed:
 | `diamond2` | Added stage 0, ore reward → 0.05, closer-to-diamond reward 0.2 → 1.0 | Learned stage 0 (5% → 60% in ~700k steps), then **stalled at ~6% on the 15×15 arena** — diamonds 5–10 blocks away need sideways tunnelling. |
 | `diamond4` | Added the tunnel action, stages 1–2 as stepping stones, ore shares the block cap, 200 ticks/sec | **Passed stage 0 in ~70 min and stage 1 in ~85 min (97–100% success)**. On stage 2 (first lava) it still finds ~0.8 diamonds per episode but dies in lava in ~50% of episodes; 24% success at 264k steps when paused. |
 
-Next likely step if stage 2 stays stuck: stop the tunnel action from stepping forward into lava,
-the way a player would stop on seeing it.
+After ~650k steps stuck on stage 2, the tunnel action got a lava safety rule (2026-10-10): it no
+longer steps forward into lava it just exposed. Training resumed from the stage-2 checkpoint.
 
 ---
 
@@ -428,5 +429,5 @@ Plus the live `smoke.py` check above, which needs the game running.
 - **Stages 3–4 untested in training so far**, and a real-terrain stage (beyond the bedrock arenas) is
   not implemented.
 - **Falling blocks** (gravel mid-fall) can survive an arena reset and appear floating in frames.
-- **The tunnel action walks blindly** for its last 6 ticks, which is the main source of lava deaths
-  on stage 2.
+- **Lava can still be walked into** with the plain movement actions; the tunnel action stops before
+  exposed lava but the agent must still learn not to step in.

@@ -65,6 +65,15 @@ class TunnelPlanTest {
     }
 
     @Test
+    void haltCostsOnlyTheBreakTimeAndDoesNotWalk() {
+        TunnelPlan p = TunnelPlan.halt(4, 8 + 15);
+        assertEquals(23, p.ticks());        // the blocks were still mined
+        assertFalse(p.walk());              // but the player stays put: lava opened up ahead
+        assertEquals(4, TunnelPlan.halt(4, 0).ticks());
+        assertThrows(IllegalArgumentException.class, () -> TunnelPlan.halt(4, -1));
+    }
+
+    @Test
     void blockedCostsANormalStepAndDoesNotWalk() {
         TunnelPlan p = TunnelPlan.blocked(4);
         assertFalse(p.walk());

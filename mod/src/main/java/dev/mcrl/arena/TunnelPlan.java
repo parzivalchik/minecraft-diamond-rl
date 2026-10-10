@@ -51,6 +51,15 @@ public record TunnelPlan(int ticks, boolean walk) {
         return new TunnelPlan(Math.max(minTicks, breakTicks + WALK_TICKS), true);
     }
 
+    /**
+     * The blocks were broken but lava is now in or next to the opening: charge the break time and stay
+     * put, as a player stops on seeing lava behind a block they just mined.
+     */
+    public static TunnelPlan halt(int minTicks, int breakTicks) {
+        if (breakTicks < 0) throw new IllegalArgumentException("negative break ticks: " + breakTicks);
+        return new TunnelPlan(Math.max(minTicks, breakTicks), false);
+    }
+
     /** A target is unbreakable (bedrock): nothing happens, and the step costs a normal step. */
     public static TunnelPlan blocked(int minTicks) {
         return new TunnelPlan(minTicks, false);

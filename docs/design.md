@@ -170,7 +170,12 @@ One tunnel step:
   `breakTicks = ceil(1 / per-tick survival break progress)` with the held iron pickaxe (stone 8,
   deepslate / ores 15, gravel 18, deepslate diamond ore 23): the player stands still for the break
   time, then holds forward for the last 6 ticks (~1 block);
-- if either target is unbreakable (bedrock): does nothing and costs a normal 4-tick step.
+- if either target is unbreakable (bedrock): does nothing and costs a normal 4-tick step;
+- **lava safety (added 2026-10-10):** if, after breaking, lava is in either target cell or in any of
+  their six neighbours, the player does not walk; the step costs `max(4, breakTicks)`. Run diamond4
+  stalled on stage 2 for ~650k steps with lava deaths in ~45% of episodes because the macro walked
+  blind into lava it had just exposed. Plain movement can still enter lava, so avoiding it is still
+  learned.
 
 The mapping lives in the mod; Python sends only the index. Python keeps a matching
 name table for logging.

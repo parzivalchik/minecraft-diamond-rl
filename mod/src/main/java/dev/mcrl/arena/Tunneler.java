@@ -4,9 +4,11 @@ import dev.mcrl.EpisodeTracker;
 import net.minecraft.block.BlockState;
 import net.minecraft.network.packet.s2c.play.PositionFlag;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 
 import java.util.EnumSet;
 
@@ -15,7 +17,7 @@ import java.util.EnumSet;
  *
  * <p>Breaks the blocks in front of the player at foot and head level (no drops) and reports how long
  * the step must last: the vanilla survival break time of each broken block with the held tool, plus
- * {@link TunnelPlan#WALK_TICKS} of walking. Breaks are instant on the server; the step's tick count is
+ * {@link TunnelPlan#WALK_TICKS} of walking (skipped when lava is exposed). Breaks are instant on the server; the step's tick count is
  * what charges the agent for them.
  */
 public final class Tunneler {
@@ -49,7 +51,25 @@ public final class Tunneler {
             if (world.breakBlock(pos, false, player)) tracker.onBlockBroken(id);
         }
         centerInColumn(player, quarter, cardinalYaw);
+        // Lava safety: never walk blind into lava the dig just exposed. Walking into it is still
+        // possible with the plain movement actions, so the agent still has to learn to avoid it.
+        if (lavaInOrNextTo(world, targets)) return TunnelPlan.halt(minTicks, breakTicks);
         return TunnelPlan.dig(minTicks, breakTicks);
+    }
+
+    /** True if lava is in a target cell or in any of its six neighbours (it could flow into the opening). */
+    private static boolean lavaInOrNextTo(ServerWorld world, BlockPos[] targets) {
+        for (BlockPos pos : targets) {
+            if (isLava(world, pos)) return true;
+            for (Direction dir : Direction.values()) {
+                if (isLava(world, pos.offset(dir))) return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isLava(ServerWorld world, BlockPos pos) {
+        return world.getFluidState(pos).isIn(FluidTags.LAVA);
     }
 
     /** Solid blocks are broken; air and fluids (lava, water) are passable and left alone. */
